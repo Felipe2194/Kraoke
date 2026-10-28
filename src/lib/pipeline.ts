@@ -1,7 +1,7 @@
 import { decodeFile, findVocalRegions, toMono, WHISPER_RATE } from "./audio";
 import { getFile, getStem, putStem, updateSong } from "./db";
 import { formatTime, wordsToLines } from "./lyrics";
-import type { SongMeta, StereoPCM, Word } from "./types";
+import type { SongMeta, StereoPCM, WhisperQuality, Word } from "./types";
 import type { SeparateMessage, SeparateRequest } from "@/workers/separate.worker";
 import type { TranscribeMessage, TranscribeRequest } from "@/workers/transcribe.worker";
 
@@ -95,40 +95,51 @@ function transcribe(req: TranscribeRequest, report: Report) {
   });
 }
 
-/**
- * Runs whatever is missing for a song. Stems are saved as soon as they exist,
- * so a reload during transcription doesn't repeat the slow separation.
- */
-export async function processSong(song: SongMeta, report: Report, language: string | null = null): Promise<SongMeta> {
-  try {
-    let vocals = await getStem(song.id, "vocals");
-    if (!vocals || !(await getStem(song.id, "instrumental"))) {
-      report({ stage: "decode", progress: 0 });
-      const file = await getFile(song.id);
-      if (!file) throw new Error("No se encontró el archivo original");
-      const pcm = await decodeFile(file);
-      song = await updateSong(song.id, { status: "separating", duration: pcm.left.length / pcm.sampleRate });
-      const stems = await separate(pcm, report);
-      await putStem(song.id, "vocals", stems.vocals);
-      await putStem(song.id, "instrumental", stems.instrumental);
-      vocals = stems.vocals;
-    }
+const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-    song = await updateSong(song.id, { status: "transcribing" });
+/** Splits the song into vocals and instrumental and stores both stems. */
+export async function separateSong(song: SongMeta, report: Report): Promise<SongMeta> {
+  try {
+    report({ stage: "decode", progress: 0 });
+    const file = await getFile(song.id);
+    if (!file) throw new Error("No se encontró el archivo original");
+    const pcm = await decodeFile(file);
+    song = await updateSong(song.id, {
+      status: "separating",
+      error: undefined,
+      duration: pcm.left.length / pcm.sampleRate,
+    });
+    const started = performance.now();
+    const stems = await separate(pcm, report);
+    await putStem(song.id, "vocals", stems.vocals);
+    await putStem(song.id, "instrumental", stems.instrumental);
+    return await updateSong(song.id, { status: "separated", separationSeconds: (performance.now() - started) / 1000 });
+  } catch (err) {
+    return updateSong(song.id, { status: "error", error: errorMessage(err) });
+  }
+}
+
+/** Transcribes the vocal stem into timed lyrics. Only runs when the user asks for a karaoke. */
+export async function transcribeSong(
+  song: SongMeta,
+  { quality, language }: { quality: WhisperQuality; language: string | null },
+  report: Report,
+): Promise<SongMeta> {
+  try {
+    const vocals = await getStem(song.id, "vocals");
+    if (!vocals) throw new Error("Primero hay que separar la voz");
+    song = await updateSong(song.id, { lyricsStatus: "transcribing", lyricsError: undefined, quality });
+    const started = performance.now();
     const mono = await toMono(vocals);
     const regions = findVocalRegions(mono, WHISPER_RATE);
-    const { words, language: detected } = await transcribe(
-      { audio: mono, regions, quality: song.quality, language },
-      report,
-    );
+    const { words, language: detected } = await transcribe({ audio: mono, regions, quality, language }, report);
     return await updateSong(song.id, {
-      status: "ready",
+      lyricsStatus: "ready",
       language: detected,
       lines: wordsToLines(words),
-      error: undefined,
+      transcriptionSeconds: (performance.now() - started) / 1000,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return updateSong(song.id, { status: "error", error: message });
+    return updateSong(song.id, { lyricsStatus: "error", lyricsError: errorMessage(err) });
   }
 }

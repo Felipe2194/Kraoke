@@ -37,13 +37,22 @@ async function tx<T>(
   });
 }
 
-export const listSongs = async () =>
-  (await tx<SongMeta[]>("songs", "readonly", (s) => s.getAll())).sort(
-    (a, b) => b.createdAt - a.createdAt,
-  );
+/** Songs saved before lyrics became a separate step used a single status. */
+function migrate(song: SongMeta | undefined): SongMeta | undefined {
+  if (!song || song.lyricsStatus) return song;
+  const legacy = song.status as string;
+  if (legacy === "ready" || legacy === "transcribing")
+    return { ...song, status: "separated", lyricsStatus: legacy === "ready" ? "ready" : "none" };
+  return { ...song, lyricsStatus: "none" };
+}
 
-export const getSong = (id: string) =>
-  tx<SongMeta | undefined>("songs", "readonly", (s) => s.get(id));
+export const listSongs = async () =>
+  (await tx<SongMeta[]>("songs", "readonly", (s) => s.getAll()))
+    .map((s) => migrate(s)!)
+    .sort((a, b) => b.createdAt - a.createdAt);
+
+export const getSong = async (id: string) =>
+  migrate(await tx<SongMeta | undefined>("songs", "readonly", (s) => s.get(id)));
 
 export const putSong = (song: SongMeta) =>
   tx("songs", "readwrite", (s) => s.put(song));

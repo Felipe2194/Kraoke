@@ -9,12 +9,10 @@ export type Line = {
   words: Word[];
 };
 
-export type SongStatus =
-  | "pending"
-  | "separating"
-  | "transcribing"
-  | "ready"
-  | "error";
+/** Audio separation state. Lyrics are generated separately, on request. */
+export type SongStatus = "pending" | "separating" | "separated" | "error";
+
+export type LyricsStatus = "none" | "transcribing" | "ready" | "error";
 
 export type WhisperQuality = "fast" | "accurate";
 
@@ -27,8 +25,13 @@ export type SongMeta = {
   duration: number;
   status: SongStatus;
   error?: string;
+  lyricsStatus: LyricsStatus;
+  lyricsError?: string;
   language?: string;
-  quality: WhisperQuality;
+  quality?: WhisperQuality;
+  /** How long each step took, shown so users know what to expect next time. */
+  separationSeconds?: number;
+  transcriptionSeconds?: number;
   lines: Line[];
 };
 

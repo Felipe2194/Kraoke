@@ -54,10 +54,17 @@ export default function KaraokeRoom() {
     else void rootRef.current?.requestFullscreen();
   }
 
-  if (song === null)
+  if (song === null || (song && song.lyricsStatus !== "ready"))
     return (
       <main className="p-10 text-center">
-        <p>No encontramos esta canción en este navegador.</p>
+        <p>
+          {song ? "Todavía no creaste el karaoke de esta canción." : "No encontramos esta canción en este navegador."}
+        </p>
+        {song && (
+          <Link href={`/cancion/${id}`} className="mt-4 mr-4 inline-block text-accent underline">
+            Crear el karaoke
+          </Link>
+        )}
         <Link href="/" className="mt-4 inline-block text-accent underline">
           Volver al inicio
         </Link>

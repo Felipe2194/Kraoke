@@ -18,6 +18,8 @@ export type SeparateMessage =
   | { type: "error"; message: string };
 
 ort.env.wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ort.env.versions.web}/dist/`;
+// ONNX Runtime defaults to half the logical cores; separation is CPU-bound, so use them all.
+ort.env.wasm.numThreads = Math.min(8, navigator.hardwareConcurrency || 4);
 
 const SEGMENT = 343980; // samples per model run (~7.8 s at 44.1 kHz)
 const BINS = 2048;

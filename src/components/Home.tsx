@@ -5,25 +5,23 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useCapabilities } from "@/lib/capabilities";
 import { deleteSong, listSongs, putFile, putSong } from "@/lib/db";
-import { LANGUAGES, languageName } from "@/lib/languages";
+import { languageName } from "@/lib/languages";
 import { formatTime } from "@/lib/lyrics";
-import type { SongMeta, WhisperQuality } from "@/lib/types";
+import type { SongMeta } from "@/lib/types";
 
-const STATUS_LABEL: Record<SongMeta["status"], string> = {
-  pending: "En espera",
-  separating: "Separando…",
-  transcribing: "Transcribiendo…",
-  ready: "Lista",
-  error: "Error",
-};
+function statusLabel(s: SongMeta) {
+  if (s.status === "error") return "Error al separar";
+  if (s.status !== "separated") return "Separando…";
+  if (s.lyricsStatus === "transcribing") return "Generando letra…";
+  if (s.lyricsStatus === "ready") return "Karaoke listo";
+  return "Voz y música separadas";
+}
 
 export default function Home() {
   const router = useRouter();
   const caps = useCapabilities();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
-  const [quality, setQuality] = useState<WhisperQuality>("accurate");
-  const [language, setLanguage] = useState("");
   const [songs, setSongs] = useState<SongMeta[]>([]);
 
   useEffect(() => {
@@ -44,10 +42,10 @@ export default function Home() {
       createdAt: Date.now(),
       duration: 0,
       status: "pending",
-      quality,
+      lyricsStatus: "none",
       lines: [],
     });
-    router.push(`/cancion/${id}${language ? `?lang=${language}` : ""}`);
+    router.push(`/cancion/${id}`);
   }
 
   async function remove(id: string) {
@@ -62,7 +60,7 @@ export default function Home() {
           <span className="text-accent">K</span>raoke
         </h1>
         <p className="mx-auto mt-3 max-w-xl text-lg text-white/70">
-          Subí cualquier canción y en minutos tenés la pista sin voz, la acapella y la letra sincronizada para cantar.
+          Subí cualquier canción y separamos la voz de la música. Cuando quieras, armamos el karaoke con la letra sincronizada.
         </p>
       </header>
 
@@ -113,36 +111,7 @@ export default function Home() {
         />
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-center gap-4 text-sm text-white/70">
-        <label className="flex items-center gap-2">
-          Letra:
-          <select
-            value={quality}
-            onChange={(e) => setQuality(e.target.value as WhisperQuality)}
-            className="rounded-lg border border-white/15 bg-white/5 px-2 py-1"
-          >
-            <option value="accurate">Precisa (descarga ~250 MB la primera vez)</option>
-            <option value="fast">Rápida (descarga ~80 MB)</option>
-          </select>
-        </label>
-        <label className="flex items-center gap-2">
-          Idioma:
-          <select
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            className="rounded-lg border border-white/15 bg-white/5 px-2 py-1"
-          >
-            <option value="">Detectar automáticamente</option>
-            {Object.entries(LANGUAGES).map(([code, name]) => (
-              <option key={code} value={code}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <p className="mt-3 text-center text-xs text-white/40">
+      <p className="mt-4 text-center text-xs text-white/40">
         Todo se procesa en tu computadora: la canción nunca se sube a ningún servidor.
       </p>
 
@@ -155,12 +124,12 @@ export default function Home() {
                 <Link href={`/cancion/${s.id}`} className="min-w-0 flex-1">
                   <p className="truncate font-semibold hover:text-accent">{s.title}</p>
                   <p className="text-xs text-white/50">
-                    {STATUS_LABEL[s.status]}
+                    {statusLabel(s)}
                     {s.duration ? ` · ${formatTime(s.duration)}` : ""}
                     {s.language ? ` · ${languageName(s.language)}` : ""}
                   </p>
                 </Link>
-                {s.status === "ready" && (
+                {s.lyricsStatus === "ready" && (
                   <Link
                     href={`/cancion/${s.id}/karaoke`}
                     className="rounded-full bg-accent px-4 py-1.5 text-sm font-bold text-black"

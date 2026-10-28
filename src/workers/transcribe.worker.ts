@@ -32,6 +32,7 @@ const MODELS: Record<WhisperQuality, string> = {
 const RATE = 16000;
 
 env.allowLocalModels = false;
+if (env.backends.onnx.wasm) env.backends.onnx.wasm.numThreads = Math.min(8, navigator.hardwareConcurrency || 4);
 
 const post = (msg: TranscribeMessage) => self.postMessage(msg);
 
