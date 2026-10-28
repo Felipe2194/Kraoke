@@ -8,7 +8,9 @@ import { getStem } from "./db";
  * Plays the instrumental and vocal stems in sync through Web Audio, with a
  * separate volume for the vocals so they can act as a guide voice.
  */
-export function useStemPlayer(songId: string) {
+export function useStemPlayer(songId: string, initialVolumes: { vocal?: number; music?: number } = {}) {
+  // Only the first value matters; later changes go through the setters.
+  const [initial] = useState(initialVolumes);
   const ctxRef = useRef<AudioContext | null>(null);
   const buffers = useRef<{ inst: AudioBuffer; voc: AudioBuffer } | null>(null);
   const sources = useRef<AudioBufferSourceNode[]>([]);
@@ -20,8 +22,10 @@ export function useStemPlayer(songId: string) {
   const [playing, setPlaying] = useState(false);
   const [ready, setReady] = useState(false);
   const [duration, setDuration] = useState(0);
-  const [vocalVolume, setVocalVolumeState] = useState(0);
-  const [musicVolume, setMusicVolumeState] = useState(1);
+  const [vocalVolume, setVocalVolumeState] = useState(initial.vocal ?? 0);
+  const [musicVolume, setMusicVolumeState] = useState(initial.music ?? 1);
+  // Both stems are mixed into this node, so visualisations see what is heard.
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,9 +35,17 @@ export function useStemPlayer(songId: string) {
       const ctx = new AudioContext({ sampleRate: inst.sampleRate });
       const vg = ctx.createGain();
       const mg = ctx.createGain();
-      vg.gain.value = 0;
-      vg.connect(ctx.destination);
-      mg.connect(ctx.destination);
+      const an = ctx.createAnalyser();
+      an.fftSize = 4096;
+      an.smoothingTimeConstant = 0.75;
+      an.minDecibels = -90;
+      an.maxDecibels = -20;
+      vg.gain.value = initial.vocal ?? 0;
+      mg.gain.value = initial.music ?? 1;
+      vg.connect(an);
+      mg.connect(an);
+      an.connect(ctx.destination);
+      setAnalyser(an);
       ctxRef.current = ctx;
       vocalGain.current = vg;
       musicGain.current = mg;
@@ -43,10 +55,11 @@ export function useStemPlayer(songId: string) {
     })();
     return () => {
       cancelled = true;
+      setAnalyser(null);
       sources.current.forEach((s) => s.stop());
       void ctxRef.current?.close();
     };
-  }, [songId]);
+  }, [songId, initial]);
 
   const stopSources = () => {
     sources.current.forEach((s) => {
@@ -119,6 +132,7 @@ export function useStemPlayer(songId: string) {
 
   return {
     ready,
+    analyser,
     playing,
     duration,
     currentTime,

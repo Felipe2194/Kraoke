@@ -10,6 +10,7 @@ import { separateSong, transcribeSong, type PipelineProgress, type Stage } from 
 import type { SongMeta, WhisperQuality } from "@/lib/types";
 import { AudioDownloads, VideoExport } from "./Downloads";
 import LyricsEditor from "./LyricsEditor";
+import StemPreview from "./StemPreview";
 
 const SEPARATION_STAGES: { stage: Stage; label: string }[] = [
   { stage: "decode", label: "Leyendo el audio" },
@@ -100,7 +101,10 @@ export default function SongView() {
         ) : song.status === "error" ? (
           <ErrorBox message={song.error} onRetry={() => separate(song)} />
         ) : separated ? (
-          <AudioDownloads song={song} />
+          <>
+            <StemPreview songId={song.id} />
+            <AudioDownloads song={song} />
+          </>
         ) : (
           <Interrupted onResume={() => separate(song)} />
         )}
